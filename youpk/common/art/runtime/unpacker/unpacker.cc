@@ -41,7 +41,7 @@ static std::list<const DexFile*> Unpacker_dex_files_;
 static ObjPtr<mirror::ClassLoader> Unpacker_class_loader_ = nullptr;
 static std::map<std::string, int> Unpacker_method_fds_;
 
-std::string Unpacker::getDumpDir() {
+std::string Unpacker::getDataDir() {
   Thread* const self = Thread::Current();
   JNIEnv* env = self->GetJniEnv();
   jclass cls_ActivityThread = env->FindClass("android/app/ActivityThread");
@@ -62,6 +62,35 @@ std::string Unpacker::getDumpDir() {
   dump_dir += UNPACKER_WORKSPACE;
   env->ReleaseStringUTFChars(dataDir, cstr_dataDir);
   return dump_dir;
+}
+
+std::string Unpacker::getExternalCacheDir() {
+  Thread* const self = Thread::Current();
+  JNIEnv* env = self->GetJniEnv();
+  jclass cls_ActivityThread = env->FindClass("android/app/ActivityThread");
+  jmethodID mid_currentActivityThread = env->GetStaticMethodID(cls_ActivityThread, "currentActivityThread", "()Landroid/app/ActivityThread;");
+  jobject obj_ActivityThread = env->CallStaticObjectMethod(cls_ActivityThread, mid_currentActivityThread);
+  jfieldID fid_mInitialApplication = env->GetFieldID(cls_ActivityThread, "mInitialApplication", "Landroid/app/Application;");
+  jobject obj_mInitialApplication = env->GetObjectField(obj_ActivityThread, fid_mInitialApplication);
+  jclass cls_Context = env->FindClass("android/content/Context");
+  jmethodID mid_getCacheDir = env->GetMethodID(cls_Context, "getExternalCacheDir", "()Ljava/io/File;");
+  jobject cache_dir = env->CallObjectMethod(obj_mInitialApplication, mid_getCacheDir);
+  jclass fileClass = env->FindClass( "java/io/File" );
+  jmethodID getPath = env->GetMethodID( fileClass, "getPath", "()Ljava/lang/String;" );
+  jstring path_string = (jstring)env->CallObjectMethod( cache_dir, getPath );
+
+  const char *path_chars = env->GetStringUTFChars( path_string, NULL );
+  std::string temp_folder( path_chars );
+
+  std::string dump_dir(path_chars);
+  dump_dir += "/";
+  dump_dir += "unpacker";
+  env->ReleaseStringUTFChars( path_string, path_chars );
+  return dump_dir;
+}
+
+std::string Unpacker::getDumpDir() {
+  return getExternalCacheDir();
 }
 
 std::string Unpacker::getDexDumpPath(const DexFile* dex_file) {
@@ -378,10 +407,13 @@ void Unpacker::init() {
   Unpacker_dump_dir_ = getDumpDir();
   mkdir(Unpacker_dump_dir_.c_str(), 0777);
   Unpacker_dex_dir_ = getDumpDir() + "/dex";
+  ULOGI("Unpacker_dex_dir_ %s", Unpacker_dex_dir_.c_str());
   mkdir(Unpacker_dex_dir_.c_str(), 0777);
   Unpacker_method_dir_ = getDumpDir() + "/method";
+  ULOGI("Unpacker_method_dir_ %s", Unpacker_method_dir_.c_str());
   mkdir(Unpacker_method_dir_.c_str(), 0777);
   Unpacker_json_path_ = getDumpDir() + "/unpacker.json";
+  ULOGI("Unpacker_json_path_ %s", Unpacker_method_dir_.c_str());
   Unpacker_json_fd_ = -1;
   Unpacker_json_fd_ = open(Unpacker_json_path_.c_str(), O_RDWR | O_CREAT, 0777);
   if (Unpacker_json_fd_ == -1) {

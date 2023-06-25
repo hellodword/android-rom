@@ -20,6 +20,8 @@ class Thread;
 class HIDDEN Unpacker {
 private:
   //获取dump目录
+  static std::string getDataDir();
+  static std::string getExternalCacheDir();
   static std::string getDumpDir();
   //获取dex dump路径
   static std::string getDexDumpPath(const DexFile* dex_file);
