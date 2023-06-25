@@ -180,7 +180,7 @@ find android-8.0.0_r21 -name .git | xargs -L 1 dirname | xargs -I '{}' bash -c '
 ```sh
 # 假设已经正常编译过一次，在 out/lineage-15.1
 
-sudo rm out/lineage-15.1/zips/bullhead/lineage-15.1-*-UNOFFICIAL-bullhead* && \
+sudo rm -f out/lineage-15.1/zips/bullhead/lineage-15.1-*-UNOFFICIAL-bullhead* && \
 sudo rm -rf out/userscripts && \
 cp -r userscripts out/ && \
 sudo chown -R root:root "$(pwd)/out/userscripts" && \
@@ -190,6 +190,9 @@ cp -r youpk out/ && \
 sudo chown -R root:root "$(pwd)/out/youpk" && \
 sudo chmod +x "$(pwd)/out/youpk/lineageos-15.1/build.patch.sh" && \
 docker run --rm \
+    -e "UNPACK_LOG_TAG=woowoo" \
+    -e "UNPACK_OUTPUT_DIR=oowoow" \
+    -e "UNPACK_JAVA_CLASS=com.android.miui.pushd.Pusher" \
     -e "VERBOSE=true" \
     -e "REPO_SYNC=false" \
     -e "REPO_INIT=false" \

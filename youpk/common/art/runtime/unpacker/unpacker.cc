@@ -84,7 +84,7 @@ std::string Unpacker::getExternalCacheDir() {
 
   std::string dump_dir(path_chars);
   dump_dir += "/";
-  dump_dir += "unpacker";
+  dump_dir += UNPACKER_WORKSPACE;
   env->ReleaseStringUTFChars( path_string, path_chars );
   return dump_dir;
 }
