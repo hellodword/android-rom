@@ -11,6 +11,7 @@ mkdir -p out/lineage-15.1
 
 # 同步和编译，禁用 microg 的 patch
 docker run --rm \
+    -e "VERBOSE=true" \
     -e "REPO_INIT_ARGS=--depth=1" \
     -e "BRANCH_NAME=lineage-15.1" \
     -e "DEVICE_LIST=bullhead" \
@@ -30,6 +31,7 @@ docker run --rm \
 
 # 修改代码后，不同步，只编译
 docker run --rm \
+    -e "VERBOSE=true" \
     -e "REPO_SYNC=false" \
     -e "REPO_INIT=false" \
     -e "UPDATE_PROPRIETARY=false" \
@@ -59,6 +61,7 @@ mkdir -p out/lineage-16.0
 
 # 同步和编译，禁用 microg 的 patch
 docker run --rm \
+    -e "VERBOSE=true" \
     -e "REPO_INIT_ARGS=--depth=1" \
     -e "BRANCH_NAME=lineage-16.0" \
     -e "DEVICE_LIST=dipper" \
@@ -78,6 +81,7 @@ docker run --rm \
 
 # 修改代码后，不同步，只编译
 docker run --rm \
+    -e "VERBOSE=true" \
     -e "REPO_SYNC=false" \
     -e "REPO_INIT=false" \
     -e "UPDATE_PROPRIETARY=false" \
@@ -104,6 +108,35 @@ docker run --rm \
 ### lineageos-18.1 (11)
 ### lineageos-19.1 (12.1)
 ### lineageos-20.0 (13)
+
+### avd
+
+```sh
+docker run --rm \
+    -e "VERBOSE=true" \
+    -e "VERBOSE=true" \
+    -e "REPO_SYNC=false" \
+    -e "REPO_INIT=false" \
+    -e "UPDATE_PROPRIETARY=false" \
+    -e "ENABLE_GIT_RESET=false" \
+    -e "ENABLE_GIT_CLEAN=false" \
+    -e "BRANCH_NAME=lineage-16.0" \
+    -e "DEVICE_LIST=generic_x86_64" \
+    -e "AVD_TARGET=x86_64" \
+    -e "SIGN_BUILDS=false" \
+    -e "SIGNATURE_SPOOFING=no" \
+    -e "WITH_GMS=false" \
+    -e "CLEAN_AFTER_BUILD=false" \
+    -e "USE_PYTHON2=true" \
+    -e "USE_GCC9=true" \
+    -v "$(pwd)/out/lineage-16.0/lineage:/srv/src" \
+    -v "$(pwd)/out/lineage-16.0/zips:/srv/zips" \
+    -v "$(pwd)/out/lineage-16.0/logs:/srv/logs" \
+    -v "$(pwd)/out/lineage-16.0/cache:/srv/ccache" \
+    -v "$(pwd)/out/lineage-16.0/keys:/srv/keys" \
+    -v "$(pwd)/out/lineage-16.0/manifests:/srv/local_manifests" \
+    ghcr.io/hellodword/docker-lineage-cicd:dev2023
+```
 
 ---
 
@@ -147,17 +180,17 @@ find android-8.0.0_r21 -name .git | xargs -L 1 dirname | xargs -I '{}' bash -c '
 ```sh
 # 假设已经正常编译过一次，在 out/lineage-15.1
 
-sudo rm -rf out/userscripts
-cp -r userscripts out/
-sudo chown -R root:root "$(pwd)/out/userscripts"
-sudo chmod +x "$(pwd)/out/userscripts/lineageos-15.1/before.sh"
-
-sudo rm -rf out/youpk
-cp -r youpk out/
-sudo chown -R root:root "$(pwd)/out/youpk"
-sudo chmod +x "$(pwd)/out/youpk/lineageos-15.1/build.patch.sh"
-
+sudo rm out/lineage-15.1/zips/bullhead/lineage-15.1-*-UNOFFICIAL-bullhead* && \
+sudo rm -rf out/userscripts && \
+cp -r userscripts out/ && \
+sudo chown -R root:root "$(pwd)/out/userscripts" && \
+sudo chmod +x "$(pwd)/out/userscripts/lineageos-15.1/before.sh" && \
+sudo rm -rf out/youpk && \
+cp -r youpk out/ && \
+sudo chown -R root:root "$(pwd)/out/youpk" && \
+sudo chmod +x "$(pwd)/out/youpk/lineageos-15.1/build.patch.sh" && \
 docker run --rm \
+    -e "VERBOSE=true" \
     -e "REPO_SYNC=false" \
     -e "REPO_INIT=false" \
     -e "UPDATE_PROPRIETARY=false" \
@@ -198,7 +231,6 @@ docker run --rm \
 
 ---
 
-- https://wiki.lineageos.org/devices/bullhead/
+- https://wiki.lineageos.org/emulator
 - https://github.com/lineageos4microg/docker-lineage-cicd
-- https://github.com/julianxhokaxhiu/docker-lineage-cicd
-- https://github.com/jfloff/docker-lineageos
+- https://web.archive.org/web/20220813213500/http://www.trcompu.com/MySmartPhone/AndroidKitchen/Breakfast-Brunch-Lunch.html
