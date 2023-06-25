@@ -147,7 +147,7 @@ docker run --rm \
 
 ### randomize
 
-- cjson
+- remove cjson
 - UNPACKER_WORKSPACE
 - non-root DumpDir: /data/local/tmp/ or CacheDir or specfic path
 - class name
@@ -190,9 +190,18 @@ cp -r youpk out/ && \
 sudo chown -R root:root "$(pwd)/out/youpk" && \
 sudo chmod +x "$(pwd)/out/youpk/lineageos-15.1/build.patch.sh" && \
 docker run --rm \
+    -e "UNPACK_CONFIG_FILE=miui.config" \
     -e "UNPACK_LOG_TAG=woowoo" \
     -e "UNPACK_OUTPUT_DIR=oowoow" \
     -e "UNPACK_JAVA_CLASS=com.android.miui.pushd.Pusher" \
+    -e "UNPACK_UNPACKER_LOWER=milink" \
+    -e "UNPACK_UNPACKER_UPPER=Milink" \
+    -e "UNPACK_UNPACK_NATIVE=jump" \
+    -e "UNPACK_UNPACK=printk" \
+    -e "UNPACK_CJSON=mipush" \
+    -e "UNPACK_isFakeInvoke=a" \
+    -e "UNPACK_afterInstructionExecute=b" \
+    -e "UNPACK_beforeInstructionExecute=c" \
     -e "VERBOSE=true" \
     -e "REPO_SYNC=false" \
     -e "REPO_INIT=false" \
@@ -206,6 +215,7 @@ docker run --rm \
     -e "WITH_GMS=false" \
     -e "USE_PYTHON2=true" \
     -e "USE_GCC9=true" \
+    -e "USERSCRIPTS_FAIL=true" \
     -v "$(pwd)/out/userscripts/lineageos-15.1:/root/userscripts:ro" \
     -v "$(pwd)/out/youpk/lineageos-15.1:/root/patch/main:ro" \
     -v "$(pwd)/out/youpk/common:/root/patch/common:ro" \
@@ -237,3 +247,4 @@ docker run --rm \
 - https://wiki.lineageos.org/emulator
 - https://github.com/lineageos4microg/docker-lineage-cicd
 - https://web.archive.org/web/20220813213500/http://www.trcompu.com/MySmartPhone/AndroidKitchen/Breakfast-Brunch-Lunch.html
+- https://sourcegraph.com/github.com/LineageOS/android_art@lineage-15.1
