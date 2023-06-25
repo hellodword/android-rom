@@ -1,0 +1,29 @@
+diff --git a/core/java/android/app/ActivityThread.java b/core/java/android/app/ActivityThread.java
+index 895b448a..a7aaf1a7 100644
+--- a/core/java/android/app/ActivityThread.java
++++ b/core/java/android/app/ActivityThread.java
+@@ -159,6 +159,11 @@ import java.util.Map;
+ import java.util.Objects;
+ import java.util.TimeZone;
+ 
++//patch by Youlor
++//++++++++++++++++++++++++++++
++import cn.youlor.Unpacker;
++//++++++++++++++++++++++++++++
++
+ final class RemoteServiceException extends AndroidRuntimeException {
+     public RemoteServiceException(String msg) {
+         super(msg);
+@@ -5781,6 +5786,12 @@ public final class ActivityThread {
+             Application app = data.info.makeApplication(data.restrictedBackupMode, null);
+             mInitialApplication = app;
+ 
++            //patch by Youlor
++            //++++++++++++++++++++++++++++
++            Unpacker.unpack();
++            //++++++++++++++++++++++++++++
++
++
+             // don't bring up providers in restricted mode; they may depend on the
+             // app's custom Application class
+             if (!data.restrictedBackupMode) {

@@ -1,0 +1,238 @@
+diff --git a/dex2oat/dex2oat.cc b/dex2oat/dex2oat.cc
+index 35f221f..03bf790 100644
+--- a/dex2oat/dex2oat.cc
++++ b/dex2oat/dex2oat.cc
+@@ -1115,6 +1115,23 @@ class Dex2Oat FINAL {
+                           kUseReadBarrier ? OatHeader::kTrueValue : OatHeader::kFalseValue);
+   }
+ 
++  //patch by Youlor
++  //++++++++++++++++++++++++++++
++  const char* UNPACK_CONFIG = "/data/local/tmp/unpacker.config";
++  bool ShouldUnpack() {
++    std::ifstream config(UNPACK_CONFIG);
++    std::string line;
++    if(config) {
++        while (std::getline(config, line)) {
++          std::string package_name = line.substr(0, line.find(':'));
++          if (oat_location_.find(package_name) != std::string::npos) {
++            return true;
++          }
++        }
++    }
++    return false;
++  }
++  //++++++++++++++++++++++++++++
+   // Parse the arguments from the command line. In case of an unrecognized option or impossible
+   // values/combinations, a usage error will be displayed and exit() is called. Thus, if the method
+   // returns, arguments have been successfully parsed.
+@@ -1276,6 +1293,13 @@ class Dex2Oat FINAL {
+ 
+     // Insert some compiler things.
+     InsertCompileOptions(argc, argv);
++
++    //patch by Youlor
++    //++++++++++++++++++++++++++++
++    if (ShouldUnpack()) {
++      compiler_options_->SetCompilerFilter(CompilerFilter::kVerify);
++    }
++    //++++++++++++++++++++++++++++
+   }
+ 
+   // Check whether the oat output files are writable, and open them for later. Also open a swap
+diff --git a/runtime/Android.bp b/runtime/Android.bp
+index c5508e3..6a3cb92 100644
+--- a/runtime/Android.bp
++++ b/runtime/Android.bp
+@@ -220,6 +220,11 @@ cc_defaults {
+         "well_known_classes.cc",
+         "zip_archive.cc",
+ 
++        //patch by Youlor
++        //++++++++++++++++++++++++++++
++        "unpacker/unpacker.cc",
++        "unpacker/cJSON.cc",
++        //++++++++++++++++++++++++++++
+         "arch/context.cc",
+         "arch/instruction_set.cc",
+         "arch/instruction_set_features.cc",
+@@ -387,7 +392,8 @@ cc_defaults {
+             ],
+         },
+     },
+-    cflags: ["-DBUILDING_LIBART=1"],
++    cflags: ["-DBUILDING_LIBART=1","-Wno-error=float-equal"],
++    cppflags: ["-Wno-error=float-equal"],
+     generated_sources: ["art_operator_srcs"],
+     // asm_support_gen.h (used by asm_support.h) is generated with cpp-define-generator
+     generated_headers: ["cpp-define-generator-asm-support"],
+diff --git a/runtime/art_method.cc b/runtime/art_method.cc
+index 67038b4..793b9c6 100644
+--- a/runtime/art_method.cc
++++ b/runtime/art_method.cc
+@@ -46,6 +46,12 @@
+ #include "scoped_thread_state_change-inl.h"
+ #include "well_known_classes.h"
+ 
++//patch by Youlor
++//++++++++++++++++++++++++++++
++#include "unpacker/unpacker.h"
++//++++++++++++++++++++++++++++
++
++
+ namespace art {
+ 
+ using android::base::StringPrintf;
+@@ -316,7 +322,12 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
+   // If the runtime is not yet started or it is required by the debugger, then perform the
+   // Invocation by the interpreter, explicitly forcing interpretation over JIT to prevent
+   // cycling around the various JIT/Interpreter methods that handle method invocation.
+-  if (UNLIKELY(!runtime->IsStarted() || Dbg::IsForcedInterpreterNeededForCalling(self, this))) {
++  //patch by Youlor
++  //++++++++++++++++++++++++++++
++  //如果是主动调用fake invoke并且不是native方法则强制走解释器
++  if (UNLIKELY(!runtime->IsStarted() || Dbg::IsForcedInterpreterNeededForCalling(self, this)
++  || (Unpacker::isFakeInvoke(self, this) && !this->IsNative()))) {
++    //++++++++++++++++++++++++++++
+     if (IsStatic()) {
+       art::interpreter::EnterInterpreterFromInvoke(
+           self, this, nullptr, args, result, /*stay_in_interpreter*/ true);
+@@ -327,6 +338,15 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
+           self, this, receiver, args + 1, result, /*stay_in_interpreter*/ true);
+     }
+   } else {
++    //patch by Youlor
++    //++++++++++++++++++++++++++++
++    //如果是主动调用fake invoke并且是native方法则不执行
++    if (Unpacker::isFakeInvoke(self, this) && this->IsNative()) {
++      // Pop transition.
++      self->PopManagedStackFragment(fragment);
++      return;
++    }
++    //++++++++++++++++++++++++++++
+     DCHECK_EQ(runtime->GetClassLinker()->GetImagePointerSize(), kRuntimePointerSize);
+ 
+     constexpr bool kLogInvocationStartAndReturn = false;
+diff --git a/runtime/class_linker.h b/runtime/class_linker.h
+index 1e8125e..bb45114 100644
+--- a/runtime/class_linker.h
++++ b/runtime/class_linker.h
+@@ -1215,6 +1215,10 @@ class ClassLinker {
+   friend class ImageWriter;  // for GetClassRoots
+   friend class JniCompilerTest;  // for GetRuntimeQuickGenericJniStub
+   friend class JniInternalTest;  // for GetRuntimeQuickGenericJniStub
++  //patch by Youlor
++  //++++++++++++++++++++++++++++
++  friend class Unpacker;
++  //++++++++++++++++++++++++++++
+   friend class VMClassLoader;  // for LookupClass and FindClassInBaseDexClassLoader.
+   ART_FRIEND_TEST(ClassLinkerTest, RegisterDexFileName);  // for DexLock, and RegisterDexFileLocked
+   ART_FRIEND_TEST(mirror::DexCacheMethodHandlesTest, Open);  // for AllocDexCache
+diff --git a/runtime/interpreter/interpreter.cc b/runtime/interpreter/interpreter.cc
+index 4bc0f2f..9cb5e01 100644
+--- a/runtime/interpreter/interpreter.cc
++++ b/runtime/interpreter/interpreter.cc
+@@ -234,7 +234,11 @@ enum InterpreterImplKind {
+   kMterpImplKind          // Assembly interpreter
+ };
+ 
+-static constexpr InterpreterImplKind kInterpreterImplKind = kMterpImplKind;
++//patch by Youlor
++//++++++++++++++++++++++++++++
++//static constexpr InterpreterImplKind kInterpreterImplKind = kMterpImplKind;
++static constexpr InterpreterImplKind kInterpreterImplKind = kSwitchImplKind;
++//++++++++++++++++++++++++++++
+ 
+ static inline JValue Execute(
+     Thread* self,
+diff --git a/runtime/interpreter/interpreter_switch_impl.cc b/runtime/interpreter/interpreter_switch_impl.cc
+index dcfe25b..d1c0c48 100644
+--- a/runtime/interpreter/interpreter_switch_impl.cc
++++ b/runtime/interpreter/interpreter_switch_impl.cc
+@@ -22,6 +22,10 @@
+ #include "jit/jit.h"
+ #include "jvalue-inl.h"
+ #include "safe_math.h"
++//patch by Youlor
++//++++++++++++++++++++++++++++
++#include "unpacker/unpacker.h"
++//++++++++++++++++++++++++++++
+ 
+ namespace art {
+ namespace interpreter {
+@@ -62,13 +66,22 @@ namespace interpreter {
+   }
+ 
+ // Code to run before each dex instruction.
++//patch by Youlor
++//++++++++++++++++++++++++++++
+ #define PREAMBLE()                                                                              \
+   do {                                                                                          \
++    inst_count++;                                                                               \
++    bool dumped = Unpacker::beforeInstructionExecute(self, shadow_frame.GetMethod(),            \
++                                                     dex_pc, inst_count);                       \
++    if (dumped) {                                                                               \
++      return JValue();                                                                          \
++    }                                                                                           \
+     if (UNLIKELY(instrumentation->HasDexPcListeners())) {                                       \
+       instrumentation->DexPcMovedEvent(self, shadow_frame.GetThisObject(code_item->ins_size_),  \
+                                        shadow_frame.GetMethod(), dex_pc);                       \
+     }                                                                                           \
+   } while (false)
++//++++++++++++++++++++++++++++
+ 
+ #define BRANCH_INSTRUMENTATION(offset)                                                         \
+   do {                                                                                         \
+@@ -120,7 +133,10 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
+   uint16_t inst_data;
+   ArtMethod* method = shadow_frame.GetMethod();
+   jit::Jit* jit = Runtime::Current()->GetJit();
+-
++  //patch by Youlor
++  //++++++++++++++++++++++++++++
++  int inst_count = -1;
++  //++++++++++++++++++++++++++++
+   do {
+     dex_pc = inst->GetDexPc(insns);
+     shadow_frame.SetDexPC(dex_pc);
+@@ -2349,6 +2365,13 @@ JValue ExecuteSwitchImpl(Thread* self, const DexFile::CodeItem* code_item,
+       case Instruction::UNUSED_7A:
+         UnexpectedOpcode(inst, shadow_frame);
+     }
++    //patch by Youlor
++    //++++++++++++++++++++++++++++
++    bool dumped = Unpacker::afterInstructionExecute(self, shadow_frame.GetMethod(), dex_pc, inst_count);
++    if (dumped) {
++      return JValue();
++    }
++    //++++++++++++++++++++++++++++
+   } while (!interpret_one_instruction);
+   // Record where we stopped.
+   shadow_frame.SetDexPC(inst->GetDexPc(insns));
+diff --git a/runtime/runtime.cc b/runtime/runtime.cc
+index 1cdf142..750afff 100644
+--- a/runtime/runtime.cc
++++ b/runtime/runtime.cc
+@@ -157,6 +157,11 @@
+ #include "verifier/method_verifier.h"
+ #include "well_known_classes.h"
+ 
++//patch by Youlor
++//++++++++++++++++++++++++++++
++#include "unpacker/unpacker.h"
++//++++++++++++++++++++++++++++
++
+ #ifdef ART_TARGET_ANDROID
+ #include <android/set_abort_message.h>
+ #endif
+@@ -1604,6 +1609,10 @@ void Runtime::RegisterRuntimeNativeMethods(JNIEnv* env) {
+   register_org_apache_harmony_dalvik_ddmc_DdmServer(env);
+   register_org_apache_harmony_dalvik_ddmc_DdmVmInternal(env);
+   register_sun_misc_Unsafe(env);
++  //patch by Youlor
++  //++++++++++++++++++++++++++++
++  Unpacker::register_cn_youlor_Unpacker(env);
++  //++++++++++++++++++++++++++++
+ }
+ 
+ std::ostream& operator<<(std::ostream& os, const DeoptimizationKind& kind) {
