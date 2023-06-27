@@ -6,38 +6,41 @@ set -x
 
 cd /srv/src/LINEAGE_15_1/
 
-rsync -a /root/patch/common/ .
+rsync -a /root/patch/new/ .
 
 git config --global --add safe.directory '*'
 
-if [ -f /root/patch/main/art.patch ]
+if [ -f /root/patch/art.patch ]
 then
     git -C art reset --hard HEAD
-    git -C art apply /root/patch/main/art.patch
+    git -C art apply /root/patch/art.patch
 fi
 
-if [ -f /root/patch/main/build.patch ]
+if [ -f /root/patch/build.patch ]
 then
     git -C build reset --hard HEAD
-    git -C build apply /root/patch/main/build.patch
+    git -C build apply /root/patch/build.patch
 fi
 
-if [ -f /root/patch/main/build.patch.sh ]
+if [ -f /root/patch/build.patch.sh ]
 then
-    /root/patch/main/build.patch.sh
+    /root/patch/build.patch.sh
 fi
 
-if [ -f /root/patch/main/base.patch ]
+if [ -f /root/patch/base.patch ]
 then
     git -C frameworks/base reset --hard HEAD
-    git -C frameworks/base apply /root/patch/main/base.patch
+    git -C frameworks/base apply /root/patch/base.patch
 fi
 
-if [ -f /root/patch/main/native.patch ]
+if [ -f /root/patch/native.patch ]
 then
     git -C frameworks/native reset --hard HEAD
-    git -C frameworks/native apply /root/patch/main/native.patch
+    git -C frameworks/native apply /root/patch/native.patch
 fi
+
+
+[ "$UNPACK_RAND" = true ] || exit 0
 
 # randomize
 

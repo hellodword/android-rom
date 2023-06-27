@@ -105,11 +105,59 @@ docker run --rm \
 ```
 
 ### lineageos-17.1 (10)
+
+
+```sh
+mkdir -p out/lineage-17.1
+
+# 同步和编译，禁用 microg 的 patch
+docker run --rm \
+    -e "VERBOSE=true" \
+    -e "REPO_INIT_ARGS=--depth=1" \
+    -e "BRANCH_NAME=lineage-17.1" \
+    -e "DEVICE_LIST=dipper" \
+    -e "SIGN_BUILDS=false" \
+    -e "SIGNATURE_SPOOFING=no" \
+    -e "WITH_GMS=false" \
+    -e "CLEAN_AFTER_BUILD=false" \
+    -v "$(pwd)/out/lineage-17.1/lineage:/srv/src" \
+    -v "$(pwd)/out/lineage-17.1/zips:/srv/zips" \
+    -v "$(pwd)/out/lineage-17.1/logs:/srv/logs" \
+    -v "$(pwd)/out/lineage-17.1/cache:/srv/ccache" \
+    -v "$(pwd)/out/lineage-17.1/keys:/srv/keys" \
+    -v "$(pwd)/out/lineage-17.1/manifests:/srv/local_manifests" \
+    ghcr.io/hellodword/docker-lineage-cicd:dev2023
+
+# 修改代码后，不同步，只编译
+docker run --rm \
+    -e "VERBOSE=true" \
+    -e "REPO_SYNC=false" \
+    -e "REPO_INIT=false" \
+    -e "UPDATE_PROPRIETARY=false" \
+    -e "ENABLE_GIT_RESET=false" \
+    -e "ENABLE_GIT_CLEAN=false" \
+    -e "BRANCH_NAME=lineage-17.1" \
+    -e "DEVICE_LIST=dipper" \
+    -e "SIGN_BUILDS=false" \
+    -e "SIGNATURE_SPOOFING=no" \
+    -e "WITH_GMS=false" \
+    -e "CLEAN_AFTER_BUILD=false" \
+    -v "$(pwd)/out/lineage-17.1/lineage:/srv/src" \
+    -v "$(pwd)/out/lineage-17.1/zips:/srv/zips" \
+    -v "$(pwd)/out/lineage-17.1/logs:/srv/logs" \
+    -v "$(pwd)/out/lineage-17.1/cache:/srv/ccache" \
+    -v "$(pwd)/out/lineage-17.1/keys:/srv/keys" \
+    -v "$(pwd)/out/lineage-17.1/manifests:/srv/local_manifests" \
+    ghcr.io/hellodword/docker-lineage-cicd:dev2023
+```
+
+
 ### lineageos-18.1 (11)
 ### lineageos-19.1 (12.1)
 ### lineageos-20.0 (13)
 
 ### avd
+
 
 ```sh
 docker run --rm \
@@ -136,6 +184,35 @@ docker run --rm \
     -v "$(pwd)/out/lineage-16.0/keys:/srv/keys" \
     -v "$(pwd)/out/lineage-16.0/manifests:/srv/local_manifests" \
     ghcr.io/hellodword/docker-lineage-cicd:dev2023
+```
+
+```sh
+# 先去 sdk manager 把对应的 api level 的镜像取消勾选，例如 android-28
+mkdir -p ~/Android/Sdk/system-images/android-28/google_apis/x86_64
+# 把 out/lineage-16.0/zips/generic_x86_64/sdk_addon/lineage-eng.root-linux-x86-img.zip 解压进去
+# 就可以在 AVD 里看到对应的镜像
+```
+
+```sh
+# https://github.com/google/android-emulator-container-scripts
+emu-docker list
+
+wget https://dl.google.com/android/repository/emulator-linux_x64-10086546.zip
+
+emu-docker -v create emulator-linux_x64-10086546.zip lineage-eng.root-linux-x86-img.zip --no-metrics
+
+# TODO
+#   adb
+#   adb root
+docker run \
+  --rm \
+  -e ADBKEY="$(cat ~/.android/adbkey)" \
+  --device /dev/kvm \
+  --publish 8554:8554/tcp \
+  --publish 5555:5555/tcp  \
+  -v /tmp/.X11-unix:/tmp/.X11-unix \
+  -e DISPLAY=$DISPLAY \
+  us-docker.pkg.dev/android-emulator-268719/images/28-lineage-x64-no-metrics
 ```
 
 ---
@@ -190,6 +267,7 @@ cp -r youpk out/ && \
 sudo chown -R root:root "$(pwd)/out/youpk" && \
 sudo chmod +x "$(pwd)/out/youpk/lineageos-15.1/build.patch.sh" && \
 docker run --rm \
+    -e "UNPACK_RAND=true" \
     -e "UNPACK_CONFIG_FILE=miui.config" \
     -e "UNPACK_LOG_TAG=woowoo" \
     -e "UNPACK_OUTPUT_DIR=oowoow" \
@@ -217,8 +295,7 @@ docker run --rm \
     -e "USE_GCC9=true" \
     -e "USERSCRIPTS_FAIL=true" \
     -v "$(pwd)/out/userscripts/lineageos-15.1:/root/userscripts:ro" \
-    -v "$(pwd)/out/youpk/lineageos-15.1:/root/patch/main:ro" \
-    -v "$(pwd)/out/youpk/common:/root/patch/common:ro" \
+    -v "$(pwd)/out/youpk/lineageos-15.1:/root/patch:ro" \
     -v "$(pwd)/out/lineage-15.1/lineage:/srv/src" \
     -v "$(pwd)/out/lineage-15.1/zips:/srv/zips" \
     -v "$(pwd)/out/lineage-15.1/logs:/srv/logs" \
