@@ -1,6 +1,7 @@
 /out
 /.vscode-server
 /.cache
+/.home
 
 /*.log
 

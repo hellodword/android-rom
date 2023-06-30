@@ -29,6 +29,7 @@
         "src/LINEAGE_*/out": true,
         ".vscode-server": true,
         ".cache": true,
+        ".home": true,
     },
     "files.watcherExclude": {
         "**/out*/**": true,
@@ -38,5 +39,6 @@
         "src/LINEAGE_*/out": true,
         ".vscode-server/**": true,
         ".cache/**": true,
+        ".home/**": true,
     }
 }

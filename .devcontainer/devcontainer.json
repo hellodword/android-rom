@@ -34,10 +34,12 @@
     "--ulimit",
     "nofile=1000000:1000000",
 
-    "-v",
-    "${localWorkspaceFolder}/.cache/vscode-cpptools:/home/ubuntu/.cache/vscode-cpptools",
-    "-v",
-    "${localWorkspaceFolder}/.vscode-server/extensionsCache:/home/ubuntu/.vscode-server/extensionsCache",
+    // "-v",
+    // "${localWorkspaceFolder}/.home:/home",
+    // "-v",
+    // "${localWorkspaceFolder}/.cache/vscode-cpptools:/home/ubuntu/.cache/vscode-cpptools",
+    // "-v",
+    // "${localWorkspaceFolder}/.vscode-server/extensionsCache:/home/ubuntu/.vscode-server/extensionsCache",
   ],
   "features": {
   },
@@ -45,5 +47,8 @@
     "DEVCONTAINER_LINEAGEOS_VERSION": "16.0"
   },
   "workspaceFolder": "/android-rom",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/android-rom,type=bind"
+  "workspaceMount": "source=${localWorkspaceFolder},target=/android-rom,type=bind",
+  "mounts": [
+    // "source=${localWorkspaceFolder}/.home,target=/home,type=bind,consistency=cached"
+  ]
 }

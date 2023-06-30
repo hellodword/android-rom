@@ -12,8 +12,10 @@ set -x
 # fi
 # EOF
 
-sudo chown -R $(id -u):$(id -g) $HOME/.cache
-sudo chown -R $(id -u):$(id -g) $HOME/.vscode-server
+
+# sudo chown $(id -u):$(id -g) $HOME
+# sudo chown -R $(id -u):$(id -g) $HOME/.cache
+# sudo chown -R $(id -u):$(id -g) $HOME/.vscode-server
 
 if [[ "$DEVCONTAINER_LINEAGEOS_VERSION" = "15.1" || "$DEVCONTAINER_LINEAGEOS_VERSION" = "16.0" ]]; then
     sudo update-alternatives --install /usr/bin/python python /usr/bin/python2 100
