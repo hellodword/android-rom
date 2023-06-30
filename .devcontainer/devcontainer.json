@@ -1,0 +1,49 @@
+{
+  "name": "android-rom",
+  "remoteUser": "ubuntu",
+  "dockerFile": "Dockerfile",
+  "context": "${localWorkspaceFolder}",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools-extension-pack",
+        // "ms-vscode.cpptools",
+        // "llvm-vs-code-extensions.vscode-clangd",
+        "ms-python.python",
+        // "bbenoist.togglehs",
+        // "peterj.proto",
+        // "Google.vscode-mojom",
+        // "msedge-dev.gnls",
+        // "stkb.rewrap",
+        // "ms-vscode-remote.remote-ssh",
+        // "eamodio.gitlens",
+        // "wmaurer.change-case",
+        "shd101wyy.markdown-preview-enhanced",
+        // "Gruntfuggly.todo-tree",
+        "alefragnani.Bookmarks",
+        // "spmeesseman.vscode-taskexplorer",
+        // "streetsidesoftware.code-spell-checker",
+        // "george-alisson.html-preview-vscode",
+        // "anseki.vscode-color",
+        // "xaver.clang-format"
+      ]
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/postCreateCommand.sh",
+  "runArgs": [
+    "--ulimit",
+    "nofile=1000000:1000000",
+
+    "-v",
+    "${localWorkspaceFolder}/.cache/vscode-cpptools:/home/ubuntu/.cache/vscode-cpptools",
+    "-v",
+    "${localWorkspaceFolder}/.vscode-server/extensionsCache:/home/ubuntu/.vscode-server/extensionsCache",
+  ],
+  "features": {
+  },
+  "containerEnv": {
+    "DEVCONTAINER_LINEAGEOS_VERSION": "16.0"
+  },
+  "workspaceFolder": "/android-rom",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/android-rom,type=bind"
+}

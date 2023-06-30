@@ -4,39 +4,39 @@ set -eEo pipefail
 set -x
 
 
-cd /srv/src/LINEAGE_15_1/
+cd /android-rom/src/LINEAGE_*/
 
-rsync -a /root/patch/new/ .
+rsync -a $HOME/patch/new/ .
 
 git config --global --add safe.directory '*'
 
-if [ -f /root/patch/art.patch ]
+if [ -f $HOME/patch/art.patch ]
 then
     git -C art reset --hard HEAD
-    git -C art apply /root/patch/art.patch
+    git -C art apply $HOME/patch/art.patch
 fi
 
-if [ -f /root/patch/build.patch ]
+if [ -f $HOME/patch/build.patch ]
 then
     git -C build reset --hard HEAD
-    git -C build apply /root/patch/build.patch
+    git -C build apply $HOME/patch/build.patch
 fi
 
-if [ -f /root/patch/build.patch.sh ]
+if [ -f $HOME/patch/build.patch.sh ]
 then
-    /root/patch/build.patch.sh
+    $HOME/patch/build.patch.sh
 fi
 
-if [ -f /root/patch/base.patch ]
+if [ -f $HOME/patch/base.patch ]
 then
     git -C frameworks/base reset --hard HEAD
-    git -C frameworks/base apply /root/patch/base.patch
+    git -C frameworks/base apply $HOME/patch/base.patch
 fi
 
-if [ -f /root/patch/native.patch ]
+if [ -f $HOME/patch/native.patch ]
 then
     git -C frameworks/native reset --hard HEAD
-    git -C frameworks/native apply /root/patch/native.patch
+    git -C frameworks/native apply $HOME/patch/native.patch
 fi
 
 

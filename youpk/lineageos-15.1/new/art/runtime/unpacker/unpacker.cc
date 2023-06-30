@@ -553,7 +553,7 @@ static void update_offset(printbuffer * const buffer)
 static cJSON_bool compare_double(double a, double b)
 {
     double maxVal = fabs(a) > fabs(b) ? fabs(a) : fabs(b);
-    return (fabs(a - b) <= maxVal * DBL_EPSILON);
+    return (fabs(a - b) <= maxVal * std::numeric_limits<double>::epsilon());
 }
 
 /* Render the number nicely from the given item into a string. */
@@ -3658,6 +3658,11 @@ inline void Unpacker::dumpMethod(ArtMethod *method, int nop_size) {
   if (nop_size != 0) {
     memset(buf + offsetof(DexFile::CodeItem, insns_), 0, nop_size);
   }
+
+//   ULOGI("dumping method [%zu] %s to %s",
+//     total_size,
+//     method->PrettyMethod().c_str(),
+//     dump_path.c_str());
 
   ssize_t written_size = write(fd, data.data(), total_size);
   if (written_size > (ssize_t)total_size) {

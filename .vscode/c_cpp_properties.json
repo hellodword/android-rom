@@ -1,0 +1,75 @@
+{
+    "configurations": [
+        {
+            "name": "16.0",
+            "intelliSenseMode": "clang-x64",
+            "includePath": [
+                "${workspaceFolder}/src/LINEAGE_16_0/art/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/bionic/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/cts/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/dalvik/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/frameworks/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/libcore/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/libnativehelper/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/lineage-sdk/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/system/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/external/libcxx/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/external/valgrind/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/external/libcxx/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/external/clang/lib/Headers/**",
+
+                // "${workspaceFolder}/src/LINEAGE_16_0/**"
+            ],
+            "compilerPath": "",
+            // "compileCommands": "${workspaceFolder}/compile_commands.json",
+            // "browse": {
+            //     "path": [
+            //         "${workspaceFolder}/src/LINEAGE_16_0"
+            //     ],
+            //     "limitSymbolsToIncludedHeaders": true
+            // },
+            "forcedInclude": [
+                "${workspaceFolder}/src/LINEAGE_16_0/art/runtime/unpacker/cJSON.h",
+                "${workspaceFolder}/src/LINEAGE_16_0/art/runtime/unpacker/unpacker.h"
+            ],
+            "cStandard": "c11",
+            "cppStandard": "c++17"
+        },
+        // {
+        //     "name": "15.1",
+        //     "intelliSenseMode": "clang-x64",
+        //     "includePath": [
+        //         "${workspaceFolder}/src/LINEAGE_15_1/art/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/bionic/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/cts/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/dalvik/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/frameworks/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/libcore/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/libnativehelper/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/lineage-sdk/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/system/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/external/libcxx/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/external/valgrind/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/external/libcxx/**",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/external/clang/lib/Headers/**",
+
+        //         // "${workspaceFolder}/src/LINEAGE_15_1/**"
+        //     ],
+        //     "compilerPath": "",
+        //     // "compileCommands": "${workspaceFolder}/compile_commands.json",
+        //     // "browse": {
+        //     //     "path": [
+        //     //         "${workspaceFolder}/src/LINEAGE_15_1"
+        //     //     ],
+        //     //     "limitSymbolsToIncludedHeaders": true
+        //     // },
+        //     "forcedInclude": [
+        //         "${workspaceFolder}/src/LINEAGE_15_1/art/runtime/unpacker/cJSON.h",
+        //         "${workspaceFolder}/src/LINEAGE_15_1/art/runtime/unpacker/unpacker.h"
+        //     ],
+        //     "cStandard": "c11",
+        //     "cppStandard": "c++17"
+        // }
+    ],
+    "version": 4
+}

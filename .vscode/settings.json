@@ -1,0 +1,42 @@
+{
+    "editor.formatOnSave": false,
+    "C_Cpp.loggingLevel": "Debug",
+    "files.associations": {
+        "__config": "cpp",
+        "__functional_base": "cpp",
+        "__mutex_base": "cpp",
+        "__tuple": "cpp",
+        "__tuple_03": "cpp",
+        "atomic": "cpp",
+        "chrono": "cpp",
+        "exception": "cpp",
+        "initializer_list": "cpp",
+        "mutex": "cpp",
+        "random": "cpp",
+        "ratio": "cpp",
+        "system_error": "cpp",
+        "tuple": "cpp",
+        "string": "cpp",
+        "__functional_base_03": "cpp",
+        "type_traits": "cpp",
+        "map": "cpp"
+    },
+    "files.exclude": {
+        "out*/**": true,
+        "out/**": true,
+        "src/LINEAGE_15_1/**": true,
+        "src/LINEAGE_17_1/**": true,
+        "src/LINEAGE_*/out": true,
+        ".vscode-server": true,
+        ".cache": true,
+    },
+    "files.watcherExclude": {
+        "**/out*/**": true,
+        "out/**": true,
+        "src/LINEAGE_15_1/**": true,
+        "src/LINEAGE_17_1/**": true,
+        "src/LINEAGE_*/out": true,
+        ".vscode-server/**": true,
+        ".cache/**": true,
+    }
+}
