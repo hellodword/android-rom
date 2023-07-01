@@ -274,11 +274,11 @@ docker run \
 
 ### randomize
 
-- remove cjson
-- UNPACKER_WORKSPACE
-- non-root DumpDir: /data/local/tmp/ or CacheDir or specfic path
-- class name
-- log tag
+- [x] remove cjson
+- [x] non-root DumpDir: /data/local/tmp/ or CacheDir or specfic path
+- [ ] skip
+- [ ] hide symbols
+- [ ] log tag
 
 ### [android-8.0.0_r21](./youpk/android-8.0.0_r21)
 

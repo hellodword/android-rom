@@ -1,0 +1,1007 @@
+diff --git a/dex2oat/dex2oat.cc b/dex2oat/dex2oat.cc
+index 609b806..170eceb 100644
+--- a/dex2oat/dex2oat.cc
++++ b/dex2oat/dex2oat.cc
+@@ -1165,6 +1165,24 @@ class Dex2Oat FINAL {
+     }
+   }
+ 
++  //patch by Youlor
++  //++++++++++++++++++++++++++++
++  const char* UNPACK_CONFIG = "/data/local/tmp/unpacker.config";
++  bool ShouldUnpack() {
++    PLOG(INFO) << "ShouldUnpack oat_location_: " << oat_location_;
++    std::ifstream config(UNPACK_CONFIG);
++    std::string line;
++    if(config) {
++        while (std::getline(config, line)) {
++          std::string package_name = line.substr(0, line.find(':'));
++          if (oat_location_.find(package_name) != std::string::npos) {
++            return true;
++          }
++        }
++    }
++    return false;
++  }
++  //++++++++++++++++++++++++++++
+   // Parse the arguments from the command line. In case of an unrecognized option or impossible
+   // values/combinations, a usage error will be displayed and exit() is called. Thus, if the method
+   // returns, arguments have been successfully parsed.
+@@ -1299,6 +1317,12 @@ class Dex2Oat FINAL {
+ 
+     // Insert some compiler things.
+     InsertCompileOptions(argc, argv);
++    //patch by Youlor
++    //++++++++++++++++++++++++++++
++    if (ShouldUnpack()) {
++      compiler_options_->SetCompilerFilter(CompilerFilter::kVerify);
++    }
++    //++++++++++++++++++++++++++++
+   }
+ 
+   // Check whether the oat output files are writable, and open them for later. Also open a swap
+diff --git a/runtime/art_method.cc b/runtime/art_method.cc
+index 7030e06..8146233 100644
+--- a/runtime/art_method.cc
++++ b/runtime/art_method.cc
+@@ -337,7 +337,15 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
+   // If the runtime is not yet started or it is required by the debugger, then perform the
+   // Invocation by the interpreter, explicitly forcing interpretation over JIT to prevent
+   // cycling around the various JIT/Interpreter methods that handle method invocation.
+-  if (UNLIKELY(!runtime->IsStarted() || Dbg::IsForcedInterpreterNeededForCalling(self, this))) {
++  //patch by Youlor
++  //++++++++++++++++++++++++++++
++  //如果是主动调用fake invoke并且不是native方法则强制走解释器
++  JValue unpacker;
++  unpacker.SetJ(UNPACKER_FUNC_isFakeInvoke);
++  bool isFakeInvoke = jit::Jit::MaybeDoOnStackReplacement(self, this, 0, 0, &unpacker);
++  if (UNLIKELY(!runtime->IsStarted() || Dbg::IsForcedInterpreterNeededForCalling(self, this)
++  || (isFakeInvoke && !this->IsNative()))) {
++    //++++++++++++++++++++++++++++
+     if (IsStatic()) {
+       art::interpreter::EnterInterpreterFromInvoke(
+           self, this, nullptr, args, result, /*stay_in_interpreter*/ true);
+@@ -348,6 +356,15 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
+           self, this, receiver, args + 1, result, /*stay_in_interpreter*/ true);
+     }
+   } else {
++    //patch by Youlor
++    //++++++++++++++++++++++++++++
++    //如果是主动调用fake invoke并且是native方法则不执行
++    if (isFakeInvoke && this->IsNative()) {
++      // Pop transition.
++      self->PopManagedStackFragment(fragment);
++      return;
++    }
++    //++++++++++++++++++++++++++++
+     DCHECK_EQ(runtime->GetClassLinker()->GetImagePointerSize(), kRuntimePointerSize);
+ 
+     constexpr bool kLogInvocationStartAndReturn = false;
+diff --git a/runtime/class_linker.h b/runtime/class_linker.h
+index 94c3b39..38c6991 100644
+--- a/runtime/class_linker.h
++++ b/runtime/class_linker.h
+@@ -752,6 +752,11 @@ class ClassLinker {
+     ClassTable* class_table;
+   };
+ 
++  const std::list<DexCacheData>& GetDexCachesData()
++      REQUIRES_SHARED(Locks::mutator_lock_, Locks::dex_lock_) {
++    return dex_caches_;
++  }
++
+  protected:
+   virtual bool InitializeClass(Thread* self,
+                                Handle<mirror::Class> klass,
+@@ -1182,10 +1187,6 @@ class ClassLinker {
+   size_t GetDexCacheCount() REQUIRES_SHARED(Locks::mutator_lock_, Locks::dex_lock_) {
+     return dex_caches_.size();
+   }
+-  const std::list<DexCacheData>& GetDexCachesData()
+-      REQUIRES_SHARED(Locks::mutator_lock_, Locks::dex_lock_) {
+-    return dex_caches_;
+-  }
+ 
+   void CreateProxyConstructor(Handle<mirror::Class> klass, ArtMethod* out)
+       REQUIRES_SHARED(Locks::mutator_lock_);
+@@ -1351,6 +1352,10 @@ class ClassLinker {
+   friend class linker::OatWriter;  // for boot image string/class table slot address lookup.
+   friend class JniCompilerTest;  // for GetRuntimeQuickGenericJniStub
+   friend class JniInternalTest;  // for GetRuntimeQuickGenericJniStub
++  //patch by Youlor
++  //++++++++++++++++++++++++++++
++  friend class Unpacker;
++  //++++++++++++++++++++++++++++
+   friend class VMClassLoader;  // for LookupClass and FindClassInBaseDexClassLoader.
+   ART_FRIEND_TEST(ClassLinkerTest, RegisterDexFileName);  // for DexLock, and RegisterDexFileLocked
+   ART_FRIEND_TEST(mirror::DexCacheMethodHandlesTest, Open);  // for AllocDexCache
+diff --git a/runtime/interpreter/interpreter.cc b/runtime/interpreter/interpreter.cc
+index 735c0e8..d0979d6 100644
+--- a/runtime/interpreter/interpreter.cc
++++ b/runtime/interpreter/interpreter.cc
+@@ -236,7 +236,11 @@ enum InterpreterImplKind {
+   kMterpImplKind          // Assembly interpreter
+ };
+ 
+-static constexpr InterpreterImplKind kInterpreterImplKind = kMterpImplKind;
++//patch by Youlor
++//++++++++++++++++++++++++++++
++//static constexpr InterpreterImplKind kInterpreterImplKind = kMterpImplKind;
++static constexpr InterpreterImplKind kInterpreterImplKind = kSwitchImplKind;
++//++++++++++++++++++++++++++++
+ 
+ static inline JValue Execute(
+     Thread* self,
+diff --git a/runtime/interpreter/interpreter_switch_impl.cc b/runtime/interpreter/interpreter_switch_impl.cc
+index 283885e..9dd26db 100644
+--- a/runtime/interpreter/interpreter_switch_impl.cc
++++ b/runtime/interpreter/interpreter_switch_impl.cc
+@@ -65,6 +65,8 @@ namespace interpreter {
+   }
+ 
+ // Code to run before each dex instruction.
++//patch by Youlor
++//++++++++++++++++++++++++++++
+ #define PREAMBLE_SAVE(save_ref)                                                                      \
+   {                                                                                             \
+     if (UNLIKELY(instrumentation->HasDexPcListeners()) &&                                       \
+@@ -78,7 +80,16 @@ namespace interpreter {
+       break;                                                                                    \
+     }                                                                                           \
+   }                                                                                             \
+-  do {} while (false)
++  do {                                                                                          \
++    inst_count++;                                                                               \
++    JValue unpacker;                                                                            \
++    unpacker.SetJ(UNPACKER_FUNC_beforeInstructionExecute);                                      \
++    bool dumped = jit::Jit::MaybeDoOnStackReplacement(self, shadow_frame.GetMethod(), dex_pc,   \
++                                        inst_count, &unpacker);                                 \
++    if (dumped) {                                                                               \
++      return;                                                                                   \
++    }                                                                                           \
++  } while (false)
+ 
+ #define PREAMBLE() PREAMBLE_SAVE(nullptr)
+ 
+@@ -216,6 +227,10 @@ void ExecuteSwitchImplCpp(SwitchImplContext* ctx) {
+   uint16_t inst_data;
+   jit::Jit* jit = Runtime::Current()->GetJit();
+ 
++  //patch by Youlor
++  //++++++++++++++++++++++++++++
++  int inst_count = -1;
++  //++++++++++++++++++++++++++++
+   do {
+     dex_pc = inst->GetDexPc(insns);
+     shadow_frame.SetDexPC(dex_pc);
+@@ -2495,6 +2510,15 @@ void ExecuteSwitchImplCpp(SwitchImplContext* ctx) {
+       case Instruction::UNUSED_F3 ... Instruction::UNUSED_F9:
+         UnexpectedOpcode(inst, shadow_frame);
+     }
++    //patch by Youlor
++    //++++++++++++++++++++++++++++
++    JValue unpacker;
++    unpacker.SetJ(UNPACKER_FUNC_afterInstructionExecute);
++    bool dumped = jit::Jit::MaybeDoOnStackReplacement(self, shadow_frame.GetMethod(), dex_pc, inst_count, &unpacker);
++    if (dumped) {
++      return;
++    }
++    //++++++++++++++++++++++++++++
+   } while (!interpret_one_instruction);
+   // Record where we stopped.
+   shadow_frame.SetDexPC(inst->GetDexPc(insns));
+diff --git a/runtime/jit/jit.cc b/runtime/jit/jit.cc
+index 57d3b9f..3948d18 100644
+--- a/runtime/jit/jit.cc
++++ b/runtime/jit/jit.cc
+@@ -40,6 +40,23 @@
+ #include "thread-inl.h"
+ #include "thread_list.h"
+ 
++#include <android/log.h>
++#include <sys/stat.h>
++#include <sys/types.h>
++#include <fcntl.h>
++#include <string>
++#include <fstream>
++#include <streambuf>
++#include <cctype>
++#include <iomanip>
++#include <sstream>
++#include "base/macros.h"
++#include "globals.h"
++#include "instrumentation.h"
++#include "thread.h"
++#include "reflection.h"
++#include "object_lock.h"
++
+ namespace art {
+ namespace jit {
+ 
+@@ -439,6 +456,9 @@ bool Jit::MaybeDoOnStackReplacement(Thread* thread,
+                                     uint32_t dex_pc,
+                                     int32_t dex_pc_offset,
+                                     JValue* result) {
++  if (result->GetJ() >= INT64_MAX-4) {
++    return jumpToUnpacker(thread, method, dex_pc, dex_pc_offset, result);
++  }
+   if (!kEnableOnStackReplacement) {
+     return false;
+   }
+@@ -785,5 +805,656 @@ ScopedJitSuspend::~ScopedJitSuspend() {
+   }
+ }
+ 
++/////////////////////
++
++#define UNUSED(expr) do { (void)(expr); } while (0)
++[[gnu::always_inline]]
++inline bool Jit::jumpToUnpacker(Thread* thread,
++                               ArtMethod* method,
++                               uint32_t dex_pc,
++                               int32_t dex_pc_offset,
++                               JValue* result) {
++  UNUSED(thread);
++  UNUSED(method);
++  UNUSED(dex_pc);
++  UNUSED(dex_pc_offset);
++
++  switch (result->GetJ()) {
++    case UNPACKER_FUNC_isFakeInvoke: {
++      return Jit::isFakeInvoke(thread, method);
++    }
++    case UNPACKER_FUNC_beforeInstructionExecute: {
++      return Jit::beforeInstructionExecute(thread, method, dex_pc, dex_pc_offset);
++    }
++    case UNPACKER_FUNC_afterInstructionExecute: {
++      return Jit::afterInstructionExecute(thread, method, dex_pc, dex_pc_offset);
++    }
++    case UNPACKER_FUNC_unpack: {
++      Jit::unpack();
++      return true;
++    }
++  }
++
++  return false;
++}
++
++// TODO hide this
++static struct {
++  bool Unpacker_fake_invoke_ = false;
++  bool Unpacker_real_invoke_ = false;
++  Thread *Unpacker_self_ = nullptr;
++  std::string Unpacker_dump_dir_;
++  std::string Unpacker_dex_dir_;
++  std::string Unpacker_method_dir_;
++  std::list<const DexFile *> Unpacker_dex_files_;
++  ObjPtr<mirror::ClassLoader> Unpacker_class_loader_ = nullptr;
++  std::map<std::string, int> Unpacker_method_fds_;
++} myStructure;
++
++// static bool Unpacker_fake_invoke_ = false;
++// static bool Unpacker_real_invoke_ = false;
++// static Thread *Unpacker_self_ = nullptr;
++// static std::string Unpacker_dump_dir_;
++// static std::string Unpacker_dex_dir_;
++// static std::string Unpacker_method_dir_;
++// static std::list<const DexFile *> Unpacker_dex_files_;
++// static ObjPtr<mirror::ClassLoader> Unpacker_class_loader_ = nullptr;
++// static std::map<std::string, int> Unpacker_method_fds_;
++
++[[gnu::always_inline]] inline std::string Jit::getDataDir(JNIEnv *env)
++{
++  jclass cls_ActivityThread = env->FindClass("android/app/ActivityThread");
++  jmethodID mid_currentActivityThread = env->GetStaticMethodID(
++      cls_ActivityThread,
++      "currentActivityThread",
++      "()Landroid/app/ActivityThread;");
++  jobject obj_ActivityThread = env->CallStaticObjectMethod(
++      cls_ActivityThread,
++      mid_currentActivityThread);
++  jfieldID fid_mInitialApplication = env->GetFieldID(
++      cls_ActivityThread, "mInitialApplication", "Landroid/app/Application;");
++  jobject obj_mInitialApplication = env->GetObjectField(
++      obj_ActivityThread,
++      fid_mInitialApplication);
++  jclass cls_Context = env->FindClass("android/content/Context");
++  jmethodID mid_getApplicationInfo = env->GetMethodID(
++      cls_Context, "getApplicationInfo", "()Landroid/content/pm/ApplicationInfo;");
++  jobject obj_app_info = env->CallObjectMethod(obj_mInitialApplication, mid_getApplicationInfo);
++  jclass cls_ApplicationInfo = env->FindClass("android/content/pm/ApplicationInfo");
++  jfieldID fid_dataDir = env->GetFieldID(cls_ApplicationInfo, "dataDir", "Ljava/lang/String;");
++  jstring path_string = (jstring)env->GetObjectField(obj_app_info, fid_dataDir);
++  const char *path_chars = env->GetStringUTFChars(path_string, nullptr);
++  std::string result(path_chars);
++  env->ReleaseStringUTFChars(path_string, path_chars);
++  return result;
++}
++
++[[gnu::always_inline]] inline std::string Jit::getExternalCacheDir(JNIEnv *env)
++{
++  jclass cls_ActivityThread = env->FindClass("android/app/ActivityThread");
++  jmethodID mid_currentActivityThread = env->GetStaticMethodID(
++      cls_ActivityThread,
++      "currentActivityThread",
++      "()Landroid/app/ActivityThread;");
++  jobject obj_ActivityThread = env->CallStaticObjectMethod(
++      cls_ActivityThread,
++      mid_currentActivityThread);
++  jfieldID fid_mInitialApplication = env->GetFieldID(
++      cls_ActivityThread, "mInitialApplication", "Landroid/app/Application;");
++  jobject obj_mInitialApplication = env->GetObjectField(
++      obj_ActivityThread,
++      fid_mInitialApplication);
++  jclass cls_Context = env->FindClass("android/content/Context");
++  jmethodID mid_getCacheDir = env->GetMethodID(
++      cls_Context, "getExternalCacheDir", "()Ljava/io/File;");
++  jobject cache_dir = env->CallObjectMethod(obj_mInitialApplication, mid_getCacheDir);
++  jclass fileClass = env->FindClass("java/io/File");
++  jmethodID getPath = env->GetMethodID(fileClass, "getPath", "()Ljava/lang/String;");
++  jstring path_string = (jstring)env->CallObjectMethod(cache_dir, getPath);
++  const char *path_chars = env->GetStringUTFChars(path_string, NULL);
++  std::string temp_folder(path_chars);
++  std::string result(path_chars);
++  env->ReleaseStringUTFChars(path_string, path_chars);
++  return result;
++}
++
++[[gnu::always_inline]] inline std::string Jit::getExternalStoragePublicDirectory(JNIEnv *env)
++{
++  jclass cls_Environment = env->FindClass("android/os/Environment");
++  jobject jType = env->GetStaticObjectField(
++      cls_Environment, env->GetStaticFieldID(
++                           cls_Environment,
++                           "DIRECTORY_DOWNLOADS",
++                           "Ljava/lang/String;"));
++  jmethodID mid_getExternalStoragePublicDirectory = env->GetStaticMethodID(
++      cls_Environment,
++      "getExternalStoragePublicDirectory",
++      "(Ljava/lang/String;)Ljava/io/File;");
++  jobject dir = env->CallStaticObjectMethod(
++      cls_Environment,
++      mid_getExternalStoragePublicDirectory,
++      jType);
++  jclass fileClass = env->FindClass("java/io/File");
++  jmethodID getPath = env->GetMethodID(fileClass, "getPath", "()Ljava/lang/String;");
++  jstring path_string = (jstring)env->CallObjectMethod(dir, getPath);
++  const char *path_chars = env->GetStringUTFChars(path_string, nullptr);
++  std::string result(path_chars);
++  env->ReleaseStringUTFChars(path_string, path_chars);
++  return result;
++}
++
++[[gnu::always_inline]] inline JNIEnv *Jit::getEnv()
++{
++  Thread *const self = Thread::Current();
++  JNIEnv *env = self->GetJniEnv();
++  return env;
++}
++
++[[gnu::always_inline]] inline std::string Jit::getDumpDir()
++{
++  JNIEnv *env = getEnv();
++  std::string s = Jit::getExternalCacheDir(env);
++  s += "/";
++  s += UNPACKER_WORKSPACE;
++  return s;
++}
++
++[[gnu::always_inline]] inline std::string Jit::getDexDumpPath(const DexFile *dex_file)
++{
++  std::string dex_location = dex_file->GetLocation();
++  size_t size = dex_file->Size();
++  uint32_t class_num = dex_file->NumClassDefs();
++  // 替换windows文件不支持的字符
++  for (size_t i = 0; i < dex_location.length(); i++)
++  {
++    if (dex_location[i] == '/' || dex_location[i] == ':')
++    {
++      dex_location[i] = '_';
++    }
++  }
++  std::string dump_path = jit::myStructure.Unpacker_dex_dir_ + "/" + dex_location;
++  dump_path += android::base::StringPrintf("_%u_%zu.dex", class_num, size);
++  return dump_path;
++}
++
++[[gnu::always_inline]] inline std::string Jit::getMethodDumpPath(ArtMethod *method)
++{
++  CHECK(method->GetDeclaringClass() != nullptr) << method;
++  const DexFile &dex_file = method->GetDeclaringClass()->GetDexFile();
++  std::string dex_location = dex_file.GetLocation();
++  size_t size = dex_file.Size();
++  // 替换windows文件不支持的字符
++  for (size_t i = 0; i < dex_location.length(); i++)
++  {
++    if (dex_location[i] == '/' || dex_location[i] == ':')
++    {
++      dex_location[i] = '_';
++    }
++  }
++  std::string dump_path = jit::myStructure.Unpacker_method_dir_ + "/" + dex_location;
++  dump_path += android::base::StringPrintf("_%zu_codeitem.bin", size);
++  return dump_path;
++}
++
++[[gnu::always_inline]] inline std::list<const DexFile *> Jit::getDexFiles()
++{
++  std::list<const DexFile *> dex_files;
++  Thread *const self = Thread::Current();
++  ClassLinker *class_linker = Runtime::Current()->GetClassLinker();
++  ReaderMutexLock mu(self, *Locks::dex_lock_);
++  const std::list<ClassLinker::DexCacheData> &dex_caches = class_linker->GetDexCachesData();
++  for (auto it = dex_caches.begin(); it != dex_caches.end(); ++it)
++  {
++    ClassLinker::DexCacheData data = *it;
++    const DexFile *dex_file = data.dex_file;
++    const std::string &dex_location = dex_file->GetLocation();
++    if (dex_location.rfind("/system/", 0) == 0)
++    {
++      continue;
++    }
++    dex_files.push_back(dex_file);
++  }
++  return dex_files;
++}
++
++[[gnu::always_inline]] inline ObjPtr<mirror::ClassLoader> Jit::getAppClassLoader()
++{
++  Thread *const self = Thread::Current();
++  ScopedObjectAccessUnchecked soa(self);
++  JNIEnv *env = self->GetJniEnv();
++  jclass cls_ActivityThread = env->FindClass("android/app/ActivityThread");
++  jmethodID mid_currentActivityThread = env->GetStaticMethodID(cls_ActivityThread, "currentActivityThread", "()Landroid/app/ActivityThread;");
++  jobject obj_ActivityThread = env->CallStaticObjectMethod(cls_ActivityThread, mid_currentActivityThread);
++  jfieldID fid_mInitialApplication = env->GetFieldID(cls_ActivityThread, "mInitialApplication", "Landroid/app/Application;");
++  jobject obj_mInitialApplication = env->GetObjectField(obj_ActivityThread, fid_mInitialApplication);
++  jclass cls_Context = env->FindClass("android/content/Context");
++  jmethodID mid_getClassLoader = env->GetMethodID(cls_Context, "getClassLoader", "()Ljava/lang/ClassLoader;");
++  jobject obj_classLoader = env->CallObjectMethod(obj_mInitialApplication, mid_getClassLoader);
++  return soa.Decode<mirror::ClassLoader>(obj_classLoader);
++}
++
++[[gnu::always_inline]] inline void Jit::invokeAllMethods()
++{
++  // dump类的六种status:
++  // Ready: 该类准备dump
++  // Resolved: ResolveClass成功
++  // ResolveClassFailed: ResolveClass失败
++  // Inited: EnsureInitialized成功
++  // EnsureInitializedFailed: EnsureInitialized失败
++  // Dumped: dump所有method成功
++  Thread *const self = Thread::Current();
++  ClassLinker *class_linker = Runtime::Current()->GetClassLinker();
++  for (const DexFile *dex_file : jit::myStructure.Unpacker_dex_files_)
++  {
++    uint32_t class_idx = 0;
++    bool skip_clinit = false;
++    std::string dex_dump_path = getDexDumpPath(dex_file);
++    std::string dex_dump_status_path = dex_dump_path+".status";
++    std::string dex_dump_index_path = dex_dump_path+".index";
++    if (Jit::fileExists(dex_dump_path)) {
++      // 已经处理过的dex
++      std::string status_str = Jit::fileReadString(dex_dump_status_path);
++      uint32_t index_num = Jit::fileReadUint(dex_dump_index_path);
++      if (status_str == "Resolved") {
++        // 如果status为Resolved, 说明进程在EnsureInitialized时结束了, 很大可能是<clinit>调用时进程崩溃/退出, 则不调用<clinit>而直接dump method
++        skip_clinit = true;
++        class_idx = index_num;
++      } else if (status_str == "Ready") {
++        class_idx = index_num;
++      } else {
++        class_idx = index_num + 1;
++      }
++    }
++    mirror::DexCache *dex_cache = class_linker->FindDexCache(self, *dex_file).Ptr();
++    StackHandleScope<2> hs(self);
++    Handle<mirror::ClassLoader> h_class_loader(hs.NewHandle(jit::myStructure.Unpacker_class_loader_.Ptr()));
++    Handle<mirror::DexCache> h_dex_cache(hs.NewHandle(dex_cache));
++    for (; class_idx < dex_file->NumClassDefs(); class_idx++)
++    {
++      std::string class_descriptor_ori(dex_file->GetClassDescriptor(dex_file->GetClassDef(class_idx)));
++      std::string class_descriptor = Jit::url_encode(class_descriptor_ori);
++      // // TODO skip
++      // if (class_descriptor_ori.find("com/google/") !=std::string::npos) {
++      //   Jit::fileWriteString(dex_dump_status_path, "Resolved");
++      //   Jit::fileWriteUint(dex_dump_index_path, class_idx);
++      //   continue;
++      // }
++      ULOGI("dumping class %s %u/%u in %s", class_descriptor.c_str(),
++            class_idx, dex_file->NumClassDefs(), dex_file->GetLocation().c_str());
++      // Ready
++      Jit::fileWriteString(dex_dump_status_path, "Ready");
++      Jit::fileWriteUint(dex_dump_index_path, class_idx);
++      art::ObjPtr<art::mirror::Class> klass = class_linker->ResolveType(dex_file->GetClassDef(class_idx).class_idx_, h_dex_cache, h_class_loader);
++      if (klass == nullptr)
++      {
++        std::string reason = android::base::StringPrintf("ResolveClass error: %s", self->GetException()->Dump().c_str());
++        ULOGI("dump class failed %s %u/%u in %s, reason: %s", class_descriptor.c_str(),
++            class_idx, dex_file->NumClassDefs(), dex_file->GetLocation().c_str(),
++            reason.c_str());
++        Jit::fileWriteString(dex_dump_status_path, "ResolveClassFailed");
++        Jit::fileWriteUint(dex_dump_index_path, class_idx);
++        self->ClearException();
++        skip_clinit = false;
++        continue;
++      }
++      Jit::fileWriteString(dex_dump_status_path, "Resolved");
++      StackHandleScope<1> hs2(self);
++      Handle<mirror::Class> h_class(hs2.NewHandle(klass));
++      if (!skip_clinit)
++      {
++        bool suc = class_linker->EnsureInitialized(self, h_class, true, true);
++        if (!suc)
++        {
++          Jit::fileWriteString(dex_dump_status_path, "EnsureInitializedFailed");
++          self->ClearException();
++          ObjectLock<mirror::Class> lock(self, h_class);
++          mirror::Class::SetStatus(h_class, ClassStatus::kInitialized, self);
++        }
++        else
++        {
++          Jit::fileWriteString(dex_dump_status_path, "Inited");
++        }
++      }
++      else
++      {
++        ObjectLock<mirror::Class> lock(self, h_class);
++        mirror::Class::SetStatus(h_class, ClassStatus::kInitialized, self);
++        skip_clinit = false;
++        Jit::fileWriteString(dex_dump_status_path, "Inited");
++      }
++      PointerSize pointer_size = class_linker->GetImagePointerSize();
++      auto methods = klass->GetDeclaredMethods(pointer_size);
++      Jit::enableFakeInvoke();
++      for (auto &m : methods)
++      {
++        ArtMethod *method = &m;
++        if (!method->IsProxyMethod() && method->IsInvokable())
++        {
++          uint32_t args_size = (uint32_t)ArtMethod::NumArgRegisters(method->GetShorty());
++          if (!method->IsStatic())
++          {
++            args_size += 1;
++          }
++          JValue result;
++          std::vector<uint32_t> args(args_size, 0);
++          if (!method->IsStatic())
++          {
++            mirror::Object *thiz = klass->AllocObject(self).Ptr();
++            args[0] = StackReference<mirror::Object>::FromMirrorPtr(thiz).AsVRegValue();
++          }
++          method->Invoke(self, args.data(), args_size, &result, method->GetShorty());
++        }
++      }
++      Jit::disableFakeInvoke();
++      Jit::fileWriteString(dex_dump_status_path, "Dumped");
++    }
++  }
++}
++
++[[gnu::always_inline]] inline bool Jit::fileExists (const std::string& name) {
++  struct stat buffer;
++  return (stat (name.c_str(), &buffer) == 0);
++}
++
++[[gnu::always_inline]] inline std::string Jit::fileReadString (const std::string& name){
++  if (!Jit::fileExists(name)) {
++    return "";
++  }
++  std::ifstream t(name);
++  std::string str((std::istreambuf_iterator<char>(t)),
++               std::istreambuf_iterator<char>());
++  return str;
++}
++
++[[gnu::always_inline]] inline uint32_t Jit::fileReadUint (const std::string& name){
++  std::string v = fileReadString(name);
++  if (v == "") {
++    return 0;
++  }
++  uint32_t i;
++  if(sscanf(v.c_str(), "%u", &i) != 1) {
++      return 0;
++  }
++  return i;
++}
++
++[[gnu::always_inline]] inline void Jit::fileWriteString (const std::string& name, const std::string& value){
++  std::ofstream file(name, std::ofstream::app);
++  file << value;
++}
++
++[[gnu::always_inline]] inline void Jit::fileWriteUint (const std::string& name, const uint32_t value){
++  Jit::fileWriteString(name, std::to_string(value));
++}
++
++[[gnu::always_inline]] inline std::string Jit::url_encode(const std::string &value) {
++    std::ostringstream escaped;
++    escaped.fill('0');
++    escaped << std::hex;
++    for (std::string::const_iterator i = value.begin(), n = value.end(); i != n; ++i) {
++        std::string::value_type c = (*i);
++        // Keep alphanumeric and other accepted characters intact
++        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
++            escaped << c;
++            continue;
++        }
++        // Any other characters are percent-encoded
++        escaped << std::uppercase;
++        escaped << '%' << std::setw(2) << int((unsigned char) c);
++        escaped << std::nouppercase;
++    }
++    return escaped.str();
++}
++
++[[gnu::always_inline]] inline void Jit::dumpAllDexes()
++{
++  for (const DexFile *dex_file : jit::myStructure.Unpacker_dex_files_)
++  {
++    std::string dump_path = getDexDumpPath(dex_file);
++    if (access(dump_path.c_str(), F_OK) != -1)
++    {
++      ULOGI("%s already dumped, ignored", dump_path.c_str());
++      continue;
++    }
++    const uint8_t *begin = dex_file->Begin();
++    size_t size = dex_file->Size();
++    int fd = open(dump_path.c_str(), O_RDWR | O_CREAT, 0777);
++    if (fd == -1)
++    {
++      ULOGE("open %s error: %s", dump_path.c_str(), strerror(errno));
++      continue;
++    }
++    std::vector<uint8_t> data(size);
++    memcpy(data.data(), "dex\n035", 8);
++    memcpy(data.data() + 8, begin + 8, size - 8);
++    size_t written_size = write(fd, data.data(), size);
++    if (written_size < size)
++    {
++      ULOGW("fwrite %s %zu/%zu error: %s", dump_path.c_str(), written_size, size, strerror(errno));
++    }
++    close(fd);
++    ULOGI("dump dex %s to %s successful!", dex_file->GetLocation().c_str(), dump_path.c_str());
++  }
++}
++
++[[gnu::always_inline]] inline void Jit::init()
++{
++  jit::myStructure.Unpacker_fake_invoke_ = false;
++  jit::myStructure.Unpacker_self_ = Thread::Current();
++  jit::myStructure.Unpacker_dump_dir_ = getDumpDir();
++  mkdir(jit::myStructure.Unpacker_dump_dir_.c_str(), 0777);
++  jit::myStructure.Unpacker_dex_dir_ = getDumpDir() + "/dex";
++  mkdir(jit::myStructure.Unpacker_dex_dir_.c_str(), 0777);
++  jit::myStructure.Unpacker_method_dir_ = getDumpDir() + "/method";
++  mkdir(jit::myStructure.Unpacker_method_dir_.c_str(), 0777);
++  jit::myStructure.Unpacker_dex_files_ = getDexFiles();
++  jit::myStructure.Unpacker_class_loader_ = getAppClassLoader();
++}
++
++[[gnu::always_inline]] inline void Jit::fini()
++{
++  jit::myStructure.Unpacker_fake_invoke_ = false;
++  jit::myStructure.Unpacker_real_invoke_ = false;
++  jit::myStructure.Unpacker_self_ = nullptr;
++  for (auto iter = jit::myStructure.Unpacker_method_fds_.begin(); iter != jit::myStructure.Unpacker_method_fds_.end(); iter++)
++  {
++    close(iter->second);
++  }
++}
++
++[[gnu::always_inline]] inline void Jit::unpack()
++{
++  ScopedObjectAccess soa(Thread::Current());
++  ULOGI("%s", "unpack begin!");
++  // 1. 初始化
++  init();
++  // 2. dump所有dex
++  dumpAllDexes();
++  // 3. 主动调用所有方法
++  invokeAllMethods();
++  // 4. 还原
++  fini();
++  ULOGI("%s", "unpack end!");
++}
++
++[[gnu::always_inline]] inline void Jit::enableFakeInvoke()
++{
++  jit::myStructure.Unpacker_fake_invoke_ = true;
++}
++
++[[gnu::always_inline]] inline void Jit::disableFakeInvoke()
++{
++  jit::myStructure.Unpacker_fake_invoke_ = false;
++}
++
++[[gnu::always_inline]] inline bool Jit::isFakeInvoke(Thread *self, ArtMethod * /*method*/)
++{
++  if (jit::myStructure.Unpacker_fake_invoke_ && self == jit::myStructure.Unpacker_self_)
++  {
++    return true;
++  }
++  return false;
++}
++
++[[gnu::always_inline]] inline void Jit::enableRealInvoke()
++{
++  jit::myStructure.Unpacker_real_invoke_ = true;
++}
++
++[[gnu::always_inline]] inline void Jit::disableRealInvoke()
++{
++  jit::myStructure.Unpacker_real_invoke_ = false;
++}
++
++[[gnu::always_inline]] inline bool Jit::isRealInvoke(Thread *self, ArtMethod * /*method*/)
++{
++  if (jit::myStructure.Unpacker_real_invoke_ && self == jit::myStructure.Unpacker_self_)
++  {
++    return true;
++  }
++  return false;
++}
++
++[[gnu::always_inline]] inline void Jit::dumpMethod(ArtMethod *method, int nop_size)
++{
++  std::string dump_path = Jit::getMethodDumpPath(method);
++  int fd = -1;
++  if (jit::myStructure.Unpacker_method_fds_.find(dump_path) != jit::myStructure.Unpacker_method_fds_.end())
++  {
++    fd = jit::myStructure.Unpacker_method_fds_[dump_path];
++  }
++  else
++  {
++    fd = open(dump_path.c_str(), O_RDWR | O_CREAT | O_APPEND, 0777);
++    if (fd == -1)
++    {
++      ULOGE("open %s error: %s", dump_path.c_str(), strerror(errno));
++      return;
++    }
++    jit::myStructure.Unpacker_method_fds_[dump_path] = fd;
++  }
++  std::string str_name = method->PrettyMethod();
++  // // TODO skip
++  // if (str_name.find("com.google.") !=std::string::npos) {
++  //   return;
++  // }
++  uint32_t index = method->GetDexMethodIndex();
++  const char *name = str_name.c_str();
++  const DexFile::CodeItem *code_item = method->GetCodeItem();
++  const DexFile &dex_file = *method->GetDexFile();
++  uint32_t code_item_size = dex_file.GetCodeItemSize(*code_item);
++  CodeItemDataAccessor accessor(dex_file, dex_file.GetCodeItem(method->GetCodeItemOffset()));
++  const uint16_t *insns = accessor.Insns();
++  size_t total_size = 4 + strlen(name) + 1 + 4 + code_item_size;
++  std::vector<uint8_t> data(total_size);
++  uint8_t *buf = data.data();
++  memcpy(buf, &index, 4);
++  buf += 4;
++  memcpy(buf, name, strlen(name) + 1);
++  buf += strlen(name) + 1;
++  memcpy(buf, &code_item_size, 4);
++  buf += 4;
++  memcpy(buf, code_item, code_item_size);
++  if (nop_size != 0)
++  {
++    memset(buf + *insns, 0, nop_size);
++  }
++  std::string method_pretty = Jit::url_encode(str_name);
++  ULOGI("dumping method [%zu] %s to %s",
++        total_size,
++        method_pretty.c_str(),
++        dump_path.c_str());
++  ssize_t written_size = write(fd, data.data(), total_size);
++  if (written_size > (ssize_t)total_size)
++  {
++    ULOGW("write %s in %s %zd/%zu error: %s", method_pretty.c_str(), dump_path.c_str(), written_size, total_size, strerror(errno));
++  }
++}
++
++// 继续解释执行返回false, dump完成返回true
++[[gnu::always_inline]] inline bool Jit::beforeInstructionExecute(Thread *self, ArtMethod *method, uint32_t dex_pc, int inst_count)
++{
++  if (Jit::isFakeInvoke(self, method))
++  {
++    const DexFile &dex_file = *method->GetDexFile();
++    CodeItemDataAccessor accessor(dex_file, dex_file.GetCodeItem(method->GetCodeItemOffset()));
++    const uint16_t *insns = accessor.Insns();
++    const Instruction *inst = Instruction::At(insns + dex_pc);
++    uint16_t inst_data = inst->Fetch16(0);
++    Instruction::Code opcode = inst->Opcode(inst_data);
++    // 对于一般的方法抽取(非ijiami, najia), 直接在第一条指令处dump即可
++    if (inst_count == 0 && opcode != Instruction::GOTO && opcode != Instruction::GOTO_16 && opcode != Instruction::GOTO_32)
++    {
++      Jit::dumpMethod(method);
++      return true;
++    }
++    // ijiami, najia的特征为: goto: goto_decrypt; nop; ... ; return; const vx, n; invoke-static xxx; goto: goto_origin;
++    else if (inst_count == 0 && opcode >= Instruction::GOTO && opcode <= Instruction::GOTO_32)
++    {
++      return false;
++    }
++    else if (inst_count == 1 && opcode >= Instruction::CONST_4 && opcode <= Instruction::CONST_WIDE_HIGH16)
++    {
++      return false;
++    }
++    else if (inst_count == 2 && (opcode == Instruction::INVOKE_STATIC || opcode == Instruction::INVOKE_STATIC_RANGE))
++    {
++      // 让这条指令真正的执行
++      Jit::disableFakeInvoke();
++      Jit::enableRealInvoke();
++      return false;
++    }
++    else if (inst_count == 3)
++    {
++      if (opcode >= Instruction::GOTO && opcode <= Instruction::GOTO_32)
++      {
++        // 写入时将第一条GOTO用nop填充
++        const Instruction *inst_first = Instruction::At(insns);
++        Instruction::Code first_opcode = inst_first->Opcode(inst->Fetch16(0));
++        CHECK(first_opcode >= Instruction::GOTO && first_opcode <= Instruction::GOTO_32);
++        ULOGD("found najia/ijiami %s", method->PrettyMethod().c_str());
++        switch (first_opcode)
++        {
++        case Instruction::GOTO:
++          Jit::dumpMethod(method, 2);
++          break;
++        case Instruction::GOTO_16:
++          Jit::dumpMethod(method, 4);
++          break;
++        case Instruction::GOTO_32:
++          Jit::dumpMethod(method, 8);
++          break;
++        default:
++          break;
++        }
++      }
++      else
++      {
++        Jit::dumpMethod(method);
++      }
++      return true;
++    }
++    Jit::dumpMethod(method);
++    return true;
++  }
++  return false;
++}
++
++[[gnu::always_inline]] inline bool Jit::afterInstructionExecute(Thread *self, ArtMethod *method, uint32_t dex_pc, int inst_count)
++{
++  const DexFile &dex_file = *method->GetDexFile();
++  CodeItemDataAccessor accessor(dex_file, dex_file.GetCodeItem(method->GetCodeItemOffset()));
++  const uint16_t *insns = accessor.Insns();
++  const Instruction *inst = Instruction::At(insns + dex_pc);
++  uint16_t inst_data = inst->Fetch16(0);
++  Instruction::Code opcode = inst->Opcode(inst_data);
++  if (inst_count == 2 && (opcode == Instruction::INVOKE_STATIC || opcode == Instruction::INVOKE_STATIC_RANGE) && Jit::isRealInvoke(self, method))
++  {
++    Jit::enableFakeInvoke();
++    Jit::disableRealInvoke();
++  }
++  return false;
++}
++
+ }  // namespace jit
+ }  // namespace art
+diff --git a/runtime/jit/jit.h b/runtime/jit/jit.h
+index 4b8b891..c1aa0ee 100644
+--- a/runtime/jit/jit.h
++++ b/runtime/jit/jit.h
+@@ -25,6 +25,32 @@
+ #include "obj_ptr.h"
+ #include "thread_pool.h"
+ 
++#include "jni_internal.h"
++#include "base/mutex.h"
++#include "mirror/class.h"
++#include "dex/dex_instruction.h"
++#include <list>
++
++#define UNPACKER_FUNC_isFakeInvoke INT64_MAX
++#define UNPACKER_FUNC_beforeInstructionExecute INT64_MAX-1
++#define UNPACKER_FUNC_afterInstructionExecute INT64_MAX-2
++#define UNPACKER_FUNC_unpack INT64_MAX-3
++
++#define UNPACKER_FUNC_unpack_FLAG ".unpacker"
++
++#define ULOG_TAG "unpacker"
++#define TOSTR(fmt) #fmt
++// format 会让这里出错
++#define UFMT TOSTR([%s: %d])
++
++#define ULOGE(fmt, ...) __android_log_print(ANDROID_LOG_ERROR, ULOG_TAG, UFMT fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
++#define ULOGW(fmt, ...) __android_log_print(ANDROID_LOG_WARN, ULOG_TAG, UFMT fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
++#define ULOGI(fmt, ...) __android_log_print(ANDROID_LOG_INFO, ULOG_TAG, UFMT fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
++#define ULOGD(fmt, ...) __android_log_print(ANDROID_LOG_DEBUG, ULOG_TAG, UFMT fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
++#define ULOGV(fmt, ...) __android_log_print(ANDROID_LOG_VERBOSE, ULOG_TAG, UFMT fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
++
++#define UNPACKER_WORKSPACE "unpacker"
++
+ namespace art {
+ 
+ class ArtMethod;
+@@ -207,6 +233,53 @@ class Jit {
+   uint16_t invoke_transition_weight_;
+   std::unique_ptr<ThreadPool> thread_pool_;
+ 
++  static bool fileExists (const std::string&);
++  static std::string fileReadString (const std::string&);
++  static uint32_t fileReadUint (const std::string&);
++  static void fileWriteString (const std::string&, const std::string&);
++  static void fileWriteUint (const std::string&, const uint32_t);
++  static std::string url_encode(const std::string &);
++    // 获取dump目录
++  static std::string getDataDir(JNIEnv *env);
++  static std::string getExternalCacheDir(JNIEnv *env);
++  static std::string getExternalStoragePublicDirectory(JNIEnv *env);
++  static JNIEnv *getEnv();
++
++  static bool jumpToUnpacker(Thread*, ArtMethod*, uint32_t, int32_t, JValue*) REQUIRES_SHARED(Locks::mutator_lock_);
++  static std::string getDumpDir();
++    // 获取dex dump路径
++  static std::string getDexDumpPath(const DexFile *dex_file);
++    // 获取method dump路径
++  static std::string getMethodDumpPath(ArtMethod *method) REQUIRES_SHARED(Locks::mutator_lock_);
++    // 获取所有的DexFile
++  static std::list<const DexFile *> getDexFiles() REQUIRES_SHARED(Locks::mutator_lock_);
++    // 获取App的ClassLoader
++  static ObjPtr<mirror::ClassLoader> getAppClassLoader() REQUIRES_SHARED(Locks::mutator_lock_);
++    // 写入method
++  static void dumpMethod(ArtMethod *method, int nop_size = 0) REQUIRES_SHARED(Locks::mutator_lock_);
++
++    // 初始化
++  static void init() REQUIRES_SHARED(Locks::mutator_lock_);
++    // 主动调用所有方法
++  static void invokeAllMethods() REQUIRES_SHARED(Locks::mutator_lock_);
++    // dump dex
++  static void dumpAllDexes();
++    // 还原
++  static void fini();
++    // 脱壳!
++  static void unpack();
++    // 主动调用 fake invoke
++  static void enableFakeInvoke();
++  static void disableFakeInvoke();
++  static bool isFakeInvoke(Thread *self, ArtMethod *method) REQUIRES_SHARED(Locks::mutator_lock_);
++    // 真正调用 real invoke
++  static void enableRealInvoke();
++  static void disableRealInvoke();
++  static bool isRealInvoke(Thread *self, ArtMethod *method) REQUIRES_SHARED(Locks::mutator_lock_);
++    // 在每条指令解释执行前会调用该方法
++  static bool beforeInstructionExecute(Thread *self, ArtMethod *method, uint32_t dex_pc, int inst_count) REQUIRES_SHARED(Locks::mutator_lock_);
++  static bool afterInstructionExecute(Thread *self, ArtMethod *method, uint32_t dex_pc, int inst_count) REQUIRES_SHARED(Locks::mutator_lock_);
++
+   DISALLOW_COPY_AND_ASSIGN(Jit);
+ };
+ 
+diff --git a/runtime/native/dalvik_system_VMDebug.cc b/runtime/native/dalvik_system_VMDebug.cc
+index 0955e86..c0699e1 100644
+--- a/runtime/native/dalvik_system_VMDebug.cc
++++ b/runtime/native/dalvik_system_VMDebug.cc
+@@ -45,6 +45,7 @@
+ #include "scoped_fast_native_object_access-inl.h"
+ #include "trace.h"
+ #include "well_known_classes.h"
++#include "jit/jit.h"
+ 
+ namespace art {
+ 
+@@ -244,6 +245,16 @@ static void VMDebug_dumpHprofData(JNIEnv* env, jclass, jstring javaFilename, jin
+     filename = "[fd]";
+   }
+ 
++  if (filename.find(UNPACKER_FUNC_unpack_FLAG) !=std::string::npos) {
++    JValue unpacker;
++    unpacker.SetJ(UNPACKER_FUNC_unpack);
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wthread-safety-analysis"
++    jit::Jit::MaybeDoOnStackReplacement(nullptr, nullptr, 0, 0, &unpacker);
++#pragma clang diagnostic pop
++    return;
++  }
++
+   int fd = javaFd;
+ 
+   hprof::DumpHeap(filename.c_str(), fd, false);

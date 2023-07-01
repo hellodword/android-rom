@@ -1,0 +1,91 @@
+diff --git a/core/java/android/app/ActivityThread.java b/core/java/android/app/ActivityThread.java
+index 14a622a6..77e33194 100644
+--- a/core/java/android/app/ActivityThread.java
++++ b/core/java/android/app/ActivityThread.java
+@@ -183,6 +183,9 @@ import java.util.Objects;
+ import java.util.TimeZone;
+ import java.util.concurrent.Executor;
+ 
++import java.io.BufferedReader;
++import java.io.FileReader;
++
+ final class RemoteServiceException extends AndroidRuntimeException {
+     public RemoteServiceException(String msg) {
+         super(msg);
+@@ -203,6 +206,9 @@ public final class ActivityThread extends ClientTransactionHandler {
+     private static final android.graphics.Bitmap.Config THUMBNAIL_FORMAT = Bitmap.Config.RGB_565;
+     static final boolean localLOGV = false;
+     static final boolean DEBUG_MESSAGES = false;
++    public static String UNPACK_CONFIG = "/data/local/tmp/unpacker.config";
++    public static int UNPACK_INTERVAL = 10 * 1000;
++    public static Thread unpackerThread = null;
+     /** @hide */
+     public static final boolean DEBUG_BROADCAST = false;
+     private static final boolean DEBUG_RESULTS = false;
+@@ -5895,6 +5901,10 @@ public final class ActivityThread extends ClientTransactionHandler {
+ 
+             mInitialApplication = app;
+ 
++            //patch by Youlor
++            //++++++++++++++++++++++++++++
++            unpack();
++            //++++++++++++++++++++++++++++
+             // don't bring up providers in restricted mode; they may depend on the
+             // app's custom Application class
+             if (!data.restrictedBackupMode) {
+@@ -6046,6 +6056,55 @@ public final class ActivityThread extends ClientTransactionHandler {
+         }
+     }
+ 
++    // TODO hide these
++    public static boolean shouldUnpack() {
++        boolean should_unpack = false;
++        String processName = ActivityThread.currentProcessName();
++        BufferedReader br = null;
++        try {
++            br = new BufferedReader(new FileReader(UNPACK_CONFIG));
++            String line;
++            while ((line = br.readLine()) != null) {
++                if (line.equals(processName)) {
++                    should_unpack = true;
++                    break;
++                }
++            }
++            br.close();
++        }
++        catch (Exception ignored) {
++
++        }
++        return should_unpack;
++    }
++
++    public static void unpack() {
++        if (unpackerThread != null) {
++            return;
++        }
++
++        if (!shouldUnpack()) {
++            return;
++        }
++
++        //开启线程调用
++        unpackerThread = new Thread() {
++            @Override
++            public void run() {
++                while (true) {
++                    try {
++                        Thread.sleep(UNPACK_INTERVAL);
++                        try { Debug.dumpHprofData(ActivityThread.currentProcessName()+".unpacker"); } catch (IOException e) {}
++                    }
++                    catch (InterruptedException e) {
++                        e.printStackTrace();
++                    }
++                }
++            }
++        };
++        unpackerThread.start();
++    }
++
+     private final void incProviderRefLocked(ProviderRefCount prc, boolean stable) {
+         if (stable) {
+             prc.stableCount += 1;

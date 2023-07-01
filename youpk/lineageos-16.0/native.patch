@@ -1,0 +1,55 @@
+diff --git a/cmds/installd/dexopt.cpp b/cmds/installd/dexopt.cpp
+index 9615a75..4802cc8 100644
+--- a/cmds/installd/dexopt.cpp
++++ b/cmds/installd/dexopt.cpp
+@@ -53,6 +53,10 @@
+ #include "otapreopt_utils.h"
+ #include "utils.h"
+ 
++//patch by Youlor
++//++++++++++++++++++++++++++++
++#include <fstream>
++//++++++++++++++++++++++++++++
+ using android::base::EndsWith;
+ using android::base::ReadFully;
+ using android::base::StringPrintf;
+@@ -1948,6 +1952,25 @@ static std::string format_dexopt_error(int status, const char* dex_path) {
+   return StringPrintf("Dex2oat invocation for %s failed with 0x%04x", dex_path, status);
+ }
+ 
++//patch by Youlor
++//++++++++++++++++++++++++++++
++const char* UNPACK_CONFIG = "/data/local/tmp/unpacker.config";
++bool ShouldUnpack(const char* pkgname) {
++    LOG(VERBOSE) << "ShouldUnpack pkgname: " << pkgname;
++    std::ifstream config(UNPACK_CONFIG);
++    std::string line;
++    if(config) {
++        while (std::getline(config, line)) {
++            std::string package_name = line.substr(0, line.find(':'));
++            if (package_name == pkgname) {
++                return true;
++            }
++        }
++    }
++    return false;
++}
++//++++++++++++++++++++++++++++
++
+ int dexopt(const char* dex_path, uid_t uid, const char* pkgname, const char* instruction_set,
+         int dexopt_needed, const char* oat_dir, int dexopt_flags, const char* compiler_filter,
+         const char* volume_uuid, const char* class_loader_context, const char* se_info,
+@@ -2021,6 +2044,13 @@ int dexopt(const char* dex_path, uid_t uid, const char* pkgname, const char* ins
+         return -1;
+     }
+ 
++    //patch by Youlor
++    //++++++++++++++++++++++++++++
++    if (ShouldUnpack(pkgname)) {
++        return -1;
++    }
++    //++++++++++++++++++++++++++++
++
+     // Open vdex files.
+     Dex2oatFileWrapper in_vdex_fd;
+     Dex2oatFileWrapper out_vdex_fd;
