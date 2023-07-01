@@ -29,7 +29,6 @@
             //     "limitSymbolsToIncludedHeaders": true
             // },
             "forcedInclude": [
-                "${workspaceFolder}/src/LINEAGE_16_0/art/runtime/unpacker/cJSON.h",
                 "${workspaceFolder}/src/LINEAGE_16_0/art/runtime/unpacker/unpacker.h"
             ],
             "cStandard": "c11",
@@ -64,7 +63,6 @@
         //     //     "limitSymbolsToIncludedHeaders": true
         //     // },
         //     "forcedInclude": [
-        //         "${workspaceFolder}/src/LINEAGE_15_1/art/runtime/unpacker/cJSON.h",
         //         "${workspaceFolder}/src/LINEAGE_15_1/art/runtime/unpacker/unpacker.h"
         //     ],
         //     "cStandard": "c11",
