@@ -420,3 +420,5 @@ docker run --rm \
 - https://web.archive.org/web/20220813213500/http://www.trcompu.com/MySmartPhone/AndroidKitchen/Breakfast-Brunch-Lunch.html
 - https://sourcegraph.com/github.com/LineageOS/android_art@lineage-15.1
 - https://evilpan.com/2021/12/26/art-internal/
+- https://github.com/BeesX/BeesAndroid
+

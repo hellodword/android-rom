@@ -6,6 +6,7 @@
             "includePath": [
                 "${workspaceFolder}/src/LINEAGE_16_0/art/**",
                 "${workspaceFolder}/src/LINEAGE_16_0/bionic/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/bionic/libc/**",
                 "${workspaceFolder}/src/LINEAGE_16_0/cts/**",
                 "${workspaceFolder}/src/LINEAGE_16_0/dalvik/**",
                 "${workspaceFolder}/src/LINEAGE_16_0/frameworks/**",
@@ -16,7 +17,8 @@
                 "${workspaceFolder}/src/LINEAGE_16_0/external/libcxx/**",
                 "${workspaceFolder}/src/LINEAGE_16_0/external/valgrind/**",
                 "${workspaceFolder}/src/LINEAGE_16_0/external/libcxx/**",
-                "${workspaceFolder}/src/LINEAGE_16_0/external/clang/lib/Headers/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/external/boringssl/**",
+                "${workspaceFolder}/src/LINEAGE_16_0/external/selinux/libselinux/**",
 
                 // "${workspaceFolder}/src/LINEAGE_16_0/**"
             ],
